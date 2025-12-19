@@ -1,0 +1,8 @@
+numpy==2.2.4
+matplotlib==3.10.1
+langgraph==0.3.27
+oct2py==5.8.0
+streamlit==1.50.0
+plotly==6.2.0
+pygad==3.5.0
+scipy==1.15.2
