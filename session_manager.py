@@ -69,8 +69,7 @@ class SessionManager:
             "config": {},
             "control_objective": "",
             "design_results": [],
-            "custom_dynamics_path": None,
-            "survey": None
+            "custom_dynamics_path": None
         }
 
         self._save_session(user_id, session_id, session_data)
