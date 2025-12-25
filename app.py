@@ -4,7 +4,7 @@ import threading
 import time
 import json
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 import io
 import re
 import plotly.graph_objects as go
@@ -123,6 +123,9 @@ if 'is_admin' not in st.session_state:
 if 'user_id' not in st.session_state:
     st.session_state.user_id = None
 
+if 'session_token' not in st.session_state:
+    st.session_state.session_token = None
+
 if 'current_session_id' not in st.session_state:
     st.session_state.current_session_id = None
 
@@ -162,6 +165,44 @@ if 'survey_response' not in st.session_state:
 
 if 'survey_completed' not in st.session_state:
     st.session_state.survey_completed = False
+
+def get_session_token_from_query() -> str:
+    token_value = st.query_params.get("session")
+    if isinstance(token_value, list):
+        return token_value[0] if token_value else ""
+    return token_value or ""
+
+
+def apply_authenticated_user(username: str, token: Optional[str] = None) -> None:
+    st.session_state.authenticated = True
+    st.session_state.username = username
+    st.session_state.is_admin = st.session_state.auth_manager.is_admin(username)
+    st.session_state.user_id = st.session_state.session_manager._get_user_id(username)
+    st.session_state.current_session_id = None
+    st.session_state.session_token = token
+
+
+def logout_user() -> None:
+    token = st.session_state.session_token or get_session_token_from_query()
+    st.session_state.auth_manager.revoke_session_token(token)
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    st.session_state.user_id = None
+    st.session_state.is_admin = False
+    st.session_state.current_session_id = None
+    st.session_state.session_token = None
+    st.query_params.clear()
+    st.rerun()
+
+
+if not st.session_state.authenticated:
+    existing_token = get_session_token_from_query()
+    if existing_token:
+        restored_username = st.session_state.auth_manager.verify_session_token(existing_token)
+        if restored_username:
+            apply_authenticated_user(restored_username, existing_token)
+        else:
+            st.query_params.clear()
 
 
 def render_auth_ui():
@@ -203,15 +244,10 @@ def render_auth_ui():
                 st.error("Enter a valid email address.")
                 return
             if st.session_state.auth_manager.verify_user(username, password):
-                st.session_state.authenticated = True
-                st.session_state.username = username.strip().lower()
-                st.session_state.is_admin = st.session_state.auth_manager.is_admin(
-                    st.session_state.username
-                )
-                st.session_state.user_id = st.session_state.session_manager._get_user_id(
-                    st.session_state.username
-                )
-                st.session_state.current_session_id = None
+                normalized = username.strip().lower()
+                token = st.session_state.auth_manager.create_session_token(normalized)
+                apply_authenticated_user(normalized, token)
+                st.query_params["session"] = token
                 st.success("Signed in successfully.")
                 st.rerun()
             else:
@@ -236,12 +272,11 @@ def render_auth_ui():
 if st.session_state.authenticated:
     st.sidebar.markdown(f"**Signed in as:** `{st.session_state.username}`")
     if st.sidebar.button("Log out"):
-        st.session_state.authenticated = False
-        st.session_state.username = None
-        st.session_state.user_id = None
-        st.session_state.is_admin = False
-        st.session_state.current_session_id = None
-        st.rerun()
+        logout_user()
+    _, logout_col = st.columns([0.85, 0.15])
+    with logout_col:
+        if st.button("Log out", key="logout_main"):
+            logout_user()
     if st.session_state.is_admin:
         st.sidebar.divider()
         if st.sidebar.button("📋 Admin Dashboard"):

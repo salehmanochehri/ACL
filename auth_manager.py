@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -25,6 +25,16 @@ class AuthManager:
                     password_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     is_admin INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
                 )
                 """
             )
@@ -132,3 +142,54 @@ class AuthManager:
                 (1 if is_admin else 0, username),
             )
             return cursor.rowcount > 0
+        
+    def create_session_token(self, username: str, ttl_hours: int = 24) -> str:
+        username = username.strip().lower()
+        if not username:
+            raise ValueError("Username is required to create a session token.")
+        token = secrets.token_urlsafe(32)
+        created_at = datetime.utcnow()
+        expires_at = created_at + timedelta(hours=ttl_hours)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO sessions (token, username, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    token,
+                    username,
+                    created_at.isoformat() + "Z",
+                    expires_at.isoformat() + "Z",
+                ),
+            )
+        return token
+
+    def verify_session_token(self, token: str) -> Optional[str]:
+        if not token:
+            return None
+        now = datetime.utcnow()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT username, expires_at FROM sessions WHERE token = ?",
+                (token,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            username, expires_at = row
+            try:
+                expiry = datetime.fromisoformat(expires_at.replace("Z", ""))
+            except ValueError:
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                return None
+            if expiry < now:
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                return None
+            return username
+
+    def revoke_session_token(self, token: str) -> None:
+        if not token:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
