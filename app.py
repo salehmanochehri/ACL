@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from typing import Dict
 import io
+import re
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -164,6 +165,10 @@ if 'survey_completed' not in st.session_state:
 
 
 def render_auth_ui():
+    def is_valid_email(email: str) -> bool:
+        email = email.strip()
+        return bool(re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", email))
+    
     st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
     
     st.markdown(
@@ -190,10 +195,13 @@ def render_auth_ui():
 
     with login_tab:
         with st.form("login_form"):
-            username = st.text_input("Email", key="login_username")
+            username = st.text_input("Email", key="login_email")
             password = st.text_input("Password", type="password", key="login_password")
             submitted = st.form_submit_button("Sign in")
         if submitted:
+            if not is_valid_email(username):
+                st.error("Enter a valid email address.")
+                return
             if st.session_state.auth_manager.verify_user(username, password):
                 st.session_state.authenticated = True
                 st.session_state.username = username.strip().lower()
@@ -211,12 +219,14 @@ def render_auth_ui():
 
     with register_tab:
         with st.form("register_form"):
-            new_username = st.text_input("Email", key="register_username")
+            new_username = st.text_input("Email", key="register_email")
             new_password = st.text_input("Password", type="password", key="register_password")
             confirm_password = st.text_input("Confirm Password", type="password", key="register_confirm_password")
             submitted = st.form_submit_button("Create account")
         if submitted:
-            if new_password != confirm_password:
+            if not is_valid_email(new_username):
+                st.error("Enter a valid email address.")
+            elif new_password != confirm_password:
                 st.error("Passwords do not match.")
             elif st.session_state.auth_manager.register_user(new_username, new_password):
                 st.success("Account created. Please sign in.")
