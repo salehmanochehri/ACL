@@ -88,6 +88,66 @@ CSS_STYLES = """
         padding: 10px;
         margin-top: 10px;
     }
+
+    .auth-hero {
+        background: linear-gradient(135deg, #e8f3ff 0%, #f7fbff 100%);
+        border: 1px solid #d6e7fb;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 10px 24px rgba(31, 119, 180, 0.08);
+    }
+    .auth-hero h1 {
+        font-size: 2.4rem;
+        margin-bottom: 0.5rem;
+        color: #1f77b4;
+    }
+    .auth-hero p {
+        font-size: 1.05rem;
+        color: #4a5568;
+        margin-bottom: 1rem;
+    }
+    .auth-feature-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+    }
+    .auth-feature-list li {
+        margin: 0.5rem 0;
+        color: #2d3748;
+        font-size: 0.98rem;
+    }
+    .auth-feature-list li span {
+        font-weight: 600;
+        color: #1f77b4;
+    }
+    .auth-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 1rem;
+    }
+    .auth-badge {
+        background-color: #1f77b4;
+        color: #ffffff;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+    }
+    .auth-card {
+        background-color: #ffffff;
+        border-radius: 16px;
+        padding: 24px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    }
+    .auth-card h2 {
+        margin-top: 0;
+        color: #1f2937;
+    }
+
+    .mb-10 {
+        margin-bottom: 1rem;
+    }
 </style>
 """
 

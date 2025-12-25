@@ -164,14 +164,33 @@ if 'survey_completed' not in st.session_state:
 
 
 def render_auth_ui():
-    st.title("🔐 Sign in")
-    st.caption("Create an account or sign in to access your design sessions.")
-
+    st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
+    
+    st.markdown(
+        """
+        <div class="auth-hero mb-10">
+            <h1>🎛️ Agentic Control Design</h1>
+            <p>Design and tune controllers faster with AI-assisted workflows, real-time
+            simulations, and scenario-driven validation.</p>
+            <ul class="auth-feature-list">
+                <li><span>System-aware prompts:</span> refine objectives using system descriptions and constraints.</li>
+                <li><span>Multi-scenario optimization:</span> compare controller performance across operating conditions.</li>
+                <li><span>Session continuity:</span> revisit experiments, logs, and design decisions anytime.</li>
+            </ul>
+            <div class="auth-badges">
+                <span class="auth-badge">PID • FSF</span>
+                <span class="auth-badge">LLM-guided design</span>
+                <span class="auth-badge">Scenario profiling</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     login_tab, register_tab = st.tabs(["Sign in", "Register"])
 
     with login_tab:
         with st.form("login_form"):
-            username = st.text_input("Username", key="login_username")
+            username = st.text_input("Email", key="login_username")
             password = st.text_input("Password", type="password", key="login_password")
             submitted = st.form_submit_button("Sign in")
         if submitted:
@@ -192,7 +211,7 @@ def render_auth_ui():
 
     with register_tab:
         with st.form("register_form"):
-            new_username = st.text_input("Username", key="register_username")
+            new_username = st.text_input("Email", key="register_username")
             new_password = st.text_input("Password", type="password", key="register_password")
             confirm_password = st.text_input("Confirm Password", type="password", key="register_confirm_password")
             submitted = st.form_submit_button("Create account")
@@ -203,7 +222,6 @@ def render_auth_ui():
                 st.success("Account created. Please sign in.")
             else:
                 st.error("Unable to register. Username may already exist or inputs are invalid.")
-
 
 if st.session_state.authenticated:
     st.sidebar.markdown(f"**Signed in as:** `{st.session_state.username}`")
