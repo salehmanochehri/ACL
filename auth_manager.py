@@ -105,3 +105,30 @@ class AuthManager:
         if not profile:
             return False
         return bool(profile.get("is_admin"))
+    
+    def get_all_users(self) -> Dict[str, Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT username, created_at, is_admin FROM users ORDER BY created_at DESC"
+            )
+            rows = cursor.fetchall()
+
+        return {
+            row[0]: {
+                "username": row[0],
+                "created_at": row[1],
+                "is_admin": bool(row[2]),
+            }
+            for row in rows
+        }
+    
+    def set_admin_status(self, username: str, is_admin: bool = True) -> bool:
+        username = username.strip().lower()
+        if not username:
+            return False
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE users SET is_admin = ? WHERE username = ?",
+                (1 if is_admin else 0, username),
+            )
+            return cursor.rowcount > 0

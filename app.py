@@ -1618,6 +1618,34 @@ def display_admin_dashboard():
     st.title("📋 Admin Dashboard")
     st.caption("Download survey responses from all users.")
 
+    st.subheader("Registered Users")
+    users = st.session_state.auth_manager.get_all_users()
+    if not users:
+        st.info("No registered users found.")
+    else:
+        users_df = pd.DataFrame(users.values())
+        st.dataframe(users_df, use_container_width=True)
+
+        st.markdown("**Promote user to admin**")
+        promotable_users = [
+            user["username"] for user in users.values() if not user.get("is_admin")
+        ]
+        if promotable_users:
+            selected_user = st.selectbox(
+                "Select user",
+                promotable_users,
+                key="promote_user_select",
+            )
+            if st.button("Grant admin access"):
+                if st.session_state.auth_manager.set_admin_status(selected_user, True):
+                    st.success(f"Granted admin access to {selected_user}.")
+                    st.rerun()
+                else:
+                    st.error("Unable to update admin status.")
+        else:
+            st.caption("All users already have admin access.")
+
+    st.subheader("Survey Responses")
     surveys = st.session_state.session_manager.get_all_surveys()
     if not surveys:
         st.info("No survey responses available yet.")
