@@ -1632,13 +1632,6 @@ def display_admin_dashboard():
         df.to_excel(writer, sheet_name="surveys", index=False)
     buffer.seek(0)
 
-    st.download_button(
-        "⬇️ Download survey results (XLSX)",
-        data=buffer,
-        file_name="survey_results.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
 
 def main():
     """Main Streamlit application with page routing"""
