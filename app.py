@@ -1366,7 +1366,7 @@ def display_metrics_plots():
 
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width="stretch",
                 config={
                     "displayModeBar": True,
                     "displaylogo": False,
@@ -1438,7 +1438,7 @@ def display_gains_plot():
 
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width="stretch",
                 config={
                     "displayModeBar": True,
                     "displaylogo": False,
@@ -1510,7 +1510,7 @@ def display_ga_results():
             )
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width="stretch",
                 config={"displayModeBar": True, "displaylogo": False}
             )
 
@@ -1562,7 +1562,7 @@ def display_ga_results():
                 )
                 st.plotly_chart(
                     fig_comp,
-                    use_container_width=True,
+                    width="stretch",
                     config={"displayModeBar": True, "displaylogo": False}
                 )
 
@@ -1590,6 +1590,10 @@ def display_survey_page():
         return
 
     with st.form("survey_form"):
+        user_name = st.text_input(
+            "Your name (optional)",
+            value=st.session_state.get("username") or "",
+        )
         overall_rating = st.slider("Overall satisfaction", 1, 5, 4)
         ease_rating = st.slider("Ease of use", 1, 5, 4)
         would_use_again = st.radio("Would you use this system again?", ["Yes", "Maybe", "No"])
@@ -1599,7 +1603,9 @@ def display_survey_page():
     col1, col2 = st.columns(2)
     with col1:
         if submit:
+            name_value = user_name.strip() or st.session_state.get("username")
             st.session_state.survey_response = {
+                "user_name": name_value,
                 "overall_rating": overall_rating,
                 "ease_rating": ease_rating,
                 "would_use_again": would_use_again,
@@ -1613,7 +1619,9 @@ def display_survey_page():
             st.rerun()
     with col2:
         if st.button("Skip for now"):
+            name_value = user_name.strip() or st.session_state.get("username")
             st.session_state.survey_response = {
+                "user_name": name_value,
                 "skipped": True,
                 "submitted_at": datetime.utcnow().isoformat() + "Z"
             }
@@ -1634,7 +1642,7 @@ def display_admin_dashboard():
         st.info("No registered users found.")
     else:
         users_df = pd.DataFrame(users.values())
-        st.dataframe(users_df, use_container_width=True)
+        st.dataframe(users_df, width="stretch")
 
         st.markdown("**Promote user to admin**")
         promotable_users = [
@@ -1681,7 +1689,7 @@ def display_admin_dashboard():
         )
 
     df = pd.DataFrame(flattened)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:

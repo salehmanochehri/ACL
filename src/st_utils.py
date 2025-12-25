@@ -792,14 +792,14 @@ def display_time_response():
                 col_btn1, col_btn2 = st.columns(2)
 
                 with col_btn1:
-                    if st.button("🎯 Reset to Optimal", use_container_width=True,
+                    if st.button("🎯 Reset to Optimal", width="stretch",
                                  disabled=not st.session_state.optimal_gains):
                         st.session_state.manual_gains = st.session_state.optimal_gains.copy()
                         st.session_state.test_mode = True
                         st.rerun()
 
                 with col_btn2:
-                    if st.button("🧪 Test Current", use_container_width=True):
+                    if st.button("🧪 Test Current", width="stretch"):
                         st.session_state.manual_gains = updated_gains
                         st.session_state.test_mode = True
                         st.rerun()
@@ -1079,7 +1079,7 @@ def _plot_system_response(state_history, test_gains=None, latest_controller_type
 
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         config={
             "displayModeBar": True,
             "displaylogo": False,
