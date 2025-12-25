@@ -69,7 +69,8 @@ class SessionManager:
             "config": {},
             "control_objective": "",
             "design_results": [],
-            "custom_dynamics_path": None
+            "custom_dynamics_path": None,
+            "survey": None
         }
 
         self._save_session(user_id, session_id, session_data)
@@ -139,6 +140,38 @@ class SessionManager:
         # Sort by updated_at, most recent first
         sessions.sort(key=lambda x: x["updated_at"], reverse=True)
         return sessions
+
+    def get_all_surveys(self) -> List[Dict]:
+        """Collect survey responses across all users for admin reporting."""
+        surveys = []
+        for user_dir in self.storage_dir.glob("*"):
+            if not user_dir.is_dir():
+                continue
+            chats_dir = user_dir / "chats"
+            if not chats_dir.exists():
+                continue
+            for session_file in chats_dir.glob("session_*.json"):
+                if "_monitor" in session_file.name:
+                    continue
+                try:
+                    with open(session_file, "r", encoding="utf-8") as handle:
+                        session_data = json.load(handle)
+                except json.JSONDecodeError:
+                    continue
+                survey = session_data.get("survey")
+                if not survey:
+                    continue
+                surveys.append(
+                    {
+                        "user_id": user_dir.name,
+                        "session_id": session_data.get("session_id"),
+                        "title": session_data.get("title"),
+                        "created_at": session_data.get("created_at"),
+                        "updated_at": session_data.get("updated_at"),
+                        "survey": survey,
+                    }
+                )
+        return surveys
 
     def delete_session(self, user_id: str, session_id: str) -> bool:
         """Delete a session"""

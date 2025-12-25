@@ -5,12 +5,14 @@ import time
 import json
 from datetime import datetime
 from typing import Dict
+import io
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import numpy as np
 from pathlib import Path
 import textwrap
+import pandas as pd
 
 from src.controllers_mock import run_optimization, initialize_state, create_optimization_graph
 from src.utils import log_to_file
@@ -18,6 +20,7 @@ from src.st_utils import (display_logo, CSS_STYLES, create_advanced_settings,
                           process_objective, display_time_response, build_config_from_session,
                           run_ga_optimization)
 from session_manager import SessionManager
+from auth_manager import AuthManager
 
 # Configure Streamlit page
 st.set_page_config(
@@ -38,6 +41,7 @@ class DummyMonitor:
         self.llm_responses = []
         self.current_state = {}
         self.is_running = False
+        self.completed = False
 
     def add_progress(self, message: str, data: Dict = None):
         pass
@@ -58,6 +62,7 @@ class DesignMonitor:
         self.llm_responses = []
         self.current_state = {}
         self.is_running = False
+        self.completed = False
         self.scenario_metrics_history = []  # NEW: Track per-scenario computational metrics
 
     def add_progress(self, message: str, data: Dict = None):
@@ -99,11 +104,23 @@ class DesignMonitor:
 
 
 # Initialize session manager and state
+if 'auth_manager' not in st.session_state:
+    st.session_state.auth_manager = AuthManager()
+
 if 'session_manager' not in st.session_state:
     st.session_state.session_manager = SessionManager()
 
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if 'username' not in st.session_state:
+    st.session_state.username = None
+
+if 'is_admin' not in st.session_state:
+    st.session_state.is_admin = False
+
 if 'user_id' not in st.session_state:
-    st.session_state.user_id = st.session_state.session_manager._get_user_id()
+    st.session_state.user_id = None
 
 if 'current_session_id' not in st.session_state:
     st.session_state.current_session_id = None
@@ -139,6 +156,73 @@ if 'ga_results' not in st.session_state:
 if 'ga_thread' not in st.session_state:
     st.session_state.ga_thread = None
 
+if 'survey_response' not in st.session_state:
+    st.session_state.survey_response = None
+
+if 'survey_completed' not in st.session_state:
+    st.session_state.survey_completed = False
+
+
+def render_auth_ui():
+    st.title("🔐 Sign in")
+    st.caption("Create an account or sign in to access your design sessions.")
+
+    login_tab, register_tab = st.tabs(["Sign in", "Register"])
+
+    with login_tab:
+        with st.form("login_form"):
+            username = st.text_input("Username", key="login_username")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Sign in")
+        if submitted:
+            if st.session_state.auth_manager.verify_user(username, password):
+                st.session_state.authenticated = True
+                st.session_state.username = username.strip().lower()
+                st.session_state.is_admin = st.session_state.auth_manager.is_admin(
+                    st.session_state.username
+                )
+                st.session_state.user_id = st.session_state.session_manager._get_user_id(
+                    st.session_state.username
+                )
+                st.session_state.current_session_id = None
+                st.success("Signed in successfully.")
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+    with register_tab:
+        with st.form("register_form"):
+            new_username = st.text_input("Username", key="register_username")
+            new_password = st.text_input("Password", type="password", key="register_password")
+            confirm_password = st.text_input("Confirm Password", type="password", key="register_confirm_password")
+            submitted = st.form_submit_button("Create account")
+        if submitted:
+            if new_password != confirm_password:
+                st.error("Passwords do not match.")
+            elif st.session_state.auth_manager.register_user(new_username, new_password):
+                st.success("Account created. Please sign in.")
+            else:
+                st.error("Unable to register. Username may already exist or inputs are invalid.")
+
+
+if st.session_state.authenticated:
+    st.sidebar.markdown(f"**Signed in as:** `{st.session_state.username}`")
+    if st.sidebar.button("Log out"):
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.session_state.user_id = None
+        st.session_state.is_admin = False
+        st.session_state.current_session_id = None
+        st.rerun()
+    if st.session_state.is_admin:
+        st.sidebar.divider()
+        if st.sidebar.button("📋 Admin Dashboard"):
+            st.session_state.page = 'admin'
+            st.rerun()
+else:
+    render_auth_ui()
+    st.stop()
+
 
 # $$$
 def load_current_session():
@@ -160,6 +244,10 @@ def load_current_session():
         st.session_state.monitor.current_state = monitor_state.get('current_state', {})
         st.session_state.monitor.progress_history = monitor_state.get('progress_history', [])
         st.session_state.monitor.scenario_metrics_history = monitor_state.get('scenario_metrics_history', [])  # NEW: Restore profiling history
+        st.session_state.monitor.completed = monitor_state.get('completed', False)
+
+        st.session_state.survey_response = session_data.get('survey')
+        st.session_state.survey_completed = bool(st.session_state.survey_response)
 
         # Reset manual tuning state for the loaded session
         st.session_state.optimal_gains = {}
@@ -294,16 +382,17 @@ def save_current_session():
         if 'max_ctrl' in st.session_state.saved_config:
             st.session_state.saved_config['max_ctrl'] = float(st.session_state.saved_config['max_ctrl'])
 
-    st.session_state.session_manager.update_session(
-        st.session_state.user_id,
-        st.session_state.current_session_id,
-        {
-            'chat_history': st.session_state.get('chat_history', []),
-            'control_objective': st.session_state.get('control_objective', ''),
-            'config': st.session_state.get('saved_config', {}),
-            'monitor_state': monitor_state
-        }
-    )
+        st.session_state.session_manager.update_session(
+            st.session_state.user_id,
+            st.session_state.current_session_id,
+            {
+                'chat_history': st.session_state.get('chat_history', []),
+                'control_objective': st.session_state.get('control_objective', ''),
+                'config': st.session_state.get('saved_config', {}),
+                'monitor_state': monitor_state,
+                'survey': st.session_state.get('survey_response')
+            }
+        )
 
 
 def get_serializable_monitor_state(monitor):
@@ -329,6 +418,7 @@ def get_serializable_monitor_state(monitor):
         'llm_responses': monitor.llm_responses,  # Already serializable
         'current_state': to_serializable(monitor.current_state),
         'progress_history': monitor.progress_history,  # Already serializable
+        'completed': monitor.completed,
         'scenario_metrics_history': [  # NEW: Serialize per-scenario metrics
             {
                 'scenario_level': entry['scenario_level'],
@@ -391,6 +481,8 @@ def display_session_sidebar_home():
                 st.session_state.test_mode = False
                 st.session_state.manual_gains = {}
                 st.session_state.optimal_gains = {}
+                st.session_state.survey_response = None
+                st.session_state.survey_completed = False
                 # Load session and switch to project page
                 st.session_state.current_session_id = session_id
                 load_current_session()
@@ -586,6 +678,7 @@ def display_session_sidebar_project():
 def run_design_with_monitoring(config: Dict, monitor: DesignMonitor):
     """Run the design process with real-time monitoring"""
     monitor.is_running = True
+    monitor.completed = False
     monitor.add_progress("🚀 Starting Control System Design Process...")
 
     try:
@@ -667,6 +760,7 @@ def run_design_with_monitoring(config: Dict, monitor: DesignMonitor):
                             break
 
             monitor.add_progress("✅ Design process completed!")
+            monitor.completed = True
 
         # Run the monitored optimization
         monitored_run_optimization(**config)
@@ -898,6 +992,8 @@ def display_home_page():
                     st.session_state.manual_gains = {}
                     st.session_state.optimal_gains = {}
                     st.session_state.ga_results = {}  # Reset GA results
+                    st.session_state.survey_response = None
+                    st.session_state.survey_completed = False
 
                     st.session_state.design_auto_started = True
                     st.session_state.page = 'project'
@@ -909,6 +1005,18 @@ def display_project_page():
 
     if 'scenarios' not in st.session_state:
         st.session_state.scenarios = []
+
+    ga_enabled = bool(st.session_state.get('saved_config', {}).get('enable_ga'))
+    ga_status = st.session_state.ga_results.get('status')
+    ga_finished = not ga_enabled or ga_status in {None, 'complete', 'error'}
+    design_done = (
+        st.session_state.monitor.completed
+        and not st.session_state.monitor.is_running
+        and ga_finished
+    )
+    if design_done and not st.session_state.survey_completed:
+        st.session_state.page = 'survey'
+        st.rerun()
 
     st.markdown("")
     with st.container():
@@ -1440,6 +1548,98 @@ def display_ga_results():
                 st.code(st.session_state.ga_results['traceback'])
 
 
+def display_survey_page():
+    """Display a survey after the design process completes."""
+    st.title("📝 Design Process Survey")
+    st.caption("Help us improve by sharing feedback about the design experience.")
+
+    if st.session_state.survey_completed and st.session_state.survey_response:
+        st.success("Thanks for your feedback!")
+        st.json(st.session_state.survey_response)
+        if st.button("Back to project"):
+            st.session_state.page = 'project'
+            st.rerun()
+        return
+
+    with st.form("survey_form"):
+        overall_rating = st.slider("Overall satisfaction", 1, 5, 4)
+        ease_rating = st.slider("Ease of use", 1, 5, 4)
+        would_use_again = st.radio("Would you use this system again?", ["Yes", "Maybe", "No"])
+        feedback = st.text_area("What should we improve?", "")
+        submit = st.form_submit_button("Submit survey")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if submit:
+            st.session_state.survey_response = {
+                "overall_rating": overall_rating,
+                "ease_rating": ease_rating,
+                "would_use_again": would_use_again,
+                "feedback": feedback,
+                "submitted_at": datetime.utcnow().isoformat() + "Z"
+            }
+            st.session_state.survey_completed = True
+            save_current_session()
+            st.success("Survey submitted. Thank you!")
+            st.session_state.page = 'project'
+            st.rerun()
+    with col2:
+        if st.button("Skip for now"):
+            st.session_state.survey_response = {
+                "skipped": True,
+                "submitted_at": datetime.utcnow().isoformat() + "Z"
+            }
+            st.session_state.survey_completed = True
+            save_current_session()
+            st.session_state.page = 'project'
+            st.rerun()
+
+
+def display_admin_dashboard():
+    """Display admin dashboard with survey exports."""
+    st.title("📋 Admin Dashboard")
+    st.caption("Download survey responses from all users.")
+
+    surveys = st.session_state.session_manager.get_all_surveys()
+    if not surveys:
+        st.info("No survey responses available yet.")
+        return
+
+    flattened = []
+    for entry in surveys:
+        survey = entry.get("survey", {})
+        flattened.append(
+            {
+                "user_id": entry.get("user_id"),
+                "session_id": entry.get("session_id"),
+                "title": entry.get("title"),
+                "created_at": entry.get("created_at"),
+                "updated_at": entry.get("updated_at"),
+                "overall_rating": survey.get("overall_rating"),
+                "ease_rating": survey.get("ease_rating"),
+                "would_use_again": survey.get("would_use_again"),
+                "feedback": survey.get("feedback"),
+                "skipped": survey.get("skipped", False),
+                "submitted_at": survey.get("submitted_at"),
+            }
+        )
+
+    df = pd.DataFrame(flattened)
+    st.dataframe(df, use_container_width=True)
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name="surveys", index=False)
+    buffer.seek(0)
+
+    st.download_button(
+        "⬇️ Download survey results (XLSX)",
+        data=buffer,
+        file_name="survey_results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
 def main():
     """Main Streamlit application with page routing"""
 
@@ -1447,6 +1647,12 @@ def main():
     if st.session_state.page == 'home':
         display_session_sidebar_home()
         display_home_page()
+    elif st.session_state.page == 'admin':
+        display_session_sidebar_project()
+        display_admin_dashboard()
+    elif st.session_state.page == 'survey':
+        display_session_sidebar_project()
+        display_survey_page()
     else:  # project page
         display_session_sidebar_project()
         display_project_page()
